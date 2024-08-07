@@ -90,9 +90,10 @@ if __name__ == "__main__":
     with open(config["output_file"], "w") as f:
         for i in tqdm.tqdm(range(0, len(prompts), request_batch_size)):
             batch_prompts = prompts[i:i + request_batch_size]
-            responses = api_generation(batch_prompts)
+            results = api_generation(batch_prompts)
             for j in range(len(batch_prompts)):
-                response = responses[j]['response']
+                result = results[j]
+                response = result.get("response")
                 index = i + j
                 # 处理response字段，将其转换为包含input和output的字典
                 output_lines = response.split("\n")

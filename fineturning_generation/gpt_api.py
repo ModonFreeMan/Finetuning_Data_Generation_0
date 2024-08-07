@@ -16,7 +16,7 @@ def make_request(
     backoff_time = 30
     client_ = OpenAI(base_url=config_['api_base_url'], api_key=config_['api_key'])
     messages = [{
-        "role": "system",
+        "role": "user",
         "content": prompt,
     }]
     while retry_cnt <= 3:
@@ -30,12 +30,13 @@ def make_request(
                 max_tokens=config_['max_tokens'],
                 messages=messages,
                 model=config_['engine'],
+                stop=config_['stop_sequences'],
             )
             break
         except openai.APIError as e:
             print(f"OpenAIError: {e}.")
             if "Please reduce your prompt" in str(e):
-                max_tokens = int(config_['max_tokens'] * 0.8)
+                max_tokens = int(config_['max_tokens'])
                 print(f"Reducing target length to {max_tokens}, retrying...")
             else:
                 print(f"Retrying in {backoff_time} seconds...")
@@ -43,9 +44,12 @@ def make_request(
                 backoff_time *= 1.5
             retry_cnt += 1
     choice = response_.choices[0]
+    content = choice.message.content
+    # 去掉响应内容中的停止符，保证jsonl转义正确
+    content = content.replace("\n\n", "")
     data_ = {
         "prompt": prompt,
-        "response": choice.message.content,
+        "response": content,
         "created_at": str(datetime.now()),
     }
     return data_
