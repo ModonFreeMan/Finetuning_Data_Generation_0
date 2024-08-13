@@ -1,10 +1,10 @@
 import concurrent.futures
-import warnings
 import os
 from datetime import datetime
 
 import dotenv
-from modelscope import AutoModelForCausalLM, AutoTokenizer
+import multiprocessing
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 def make_request(config_, prompt_, tokenizer, model, device):
@@ -20,14 +20,14 @@ def make_request(config_, prompt_, tokenizer, model, device):
     model_inputs = tokenizer([text], return_tensors="pt").to(device)
 
     generated_ids = model.generate(
-        model_inputs.input_ids.to(device),
+        model_inputs.input_ids,
         max_new_tokens=config_['max_new_tokens'],
-        temperature=config_['temperature'],
-        top_p=config_['top_p'],
     )
+
     generated_ids = [
         output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
     ]
+
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
     data_ = {
         "prompt": prompt_,
@@ -47,11 +47,10 @@ def get_config():
     try:
         dotenv.load_dotenv()
         config_ = {
-            "top_p": float(os.getenv("TOP_P")),
             "model_path": os.getenv("MODEL_PATH"),
             "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS")),
             "max_works": int(os.getenv("MAX_WORKERS")),
-            "temperature": float(os.getenv("TEMPERATURE"))
+            "device": os.getenv("DEVICE")
         }
         return config_
     except ValueError as e:
@@ -67,17 +66,21 @@ def api_generation(prompts):
 
     device = "cuda"  # the device to load the model onto
     config = get_config()
+    # 指定在单张 GPU 上运行
+    device = config.get('device')
     model_path = config.get("model_path")
     max_workers = config.get("max_works")
+
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
         torch_dtype="auto",
-        device_map="auto"
-    ).to(device)
+        device_map="auto",
+    )
+
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-    # 多线程并发执行请求
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+    # 多进程并发执行请求
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(make_request, config, prompt, tokenizer, model, device) for prompt in prompts]
         results = [future.result() for future in concurrent.futures.as_completed(futures)]
 

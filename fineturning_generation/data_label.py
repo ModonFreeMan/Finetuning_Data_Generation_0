@@ -4,6 +4,8 @@ import re
 
 import tqdm
 from dotenv import load_dotenv
+from torch import multiprocessing
+
 from qwen2_api import api_generation
 
 
@@ -69,6 +71,9 @@ def load_label_pool(label_pool_file):
 
 
 if __name__ == '__main__':
+
+    # 使用spawn启动子进程，确保cuda可以多进程执行
+    multiprocessing.set_start_method("spawn")
 
     # 加载环境变量
     config = get_config()
