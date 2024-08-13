@@ -58,13 +58,8 @@ def get_config():
 
 
 def api_generation(prompts):
-    # 忽略特定警告
-    warnings.filterwarnings("ignore", category=UserWarning, message="Torch was not compiled with flash attention")
-    warnings.filterwarnings("ignore", category=UserWarning,
-                            message="The attention mask is not set and cannot be inferred from input because pad "
-                                    "token is same as eos token.")
-
-    device = "cuda"  # the device to load the model onto
+    # 使用spawn启动子进程，同时使用try catch块避免被重复调用
+    multiprocessing.set_start_method("spawn")
     config = get_config()
     # 指定在单张 GPU 上运行
     device = config.get('device')
