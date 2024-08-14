@@ -43,7 +43,8 @@ def get_config():
             "output_file": os.getenv('DATA_LABEL_OUTPUT_FILE'),
             "request_batch_size": int(os.getenv('LABEL_BATCH_SIZE')),
             "label_pool": os.getenv('LABEL_POOL_PATH'),
-            "label_type": os.getenv('LABEL_TYPE')
+            "label_type": os.getenv('LABEL_TYPE'),
+            "start_index": int(os.getenv('START_INDEX')),
         }
         if config_['label_type'] == '':
             raise ValueError('未指定待标记数据类型')
@@ -117,7 +118,7 @@ if __name__ == '__main__':
     pattern = r"'(.*?)'"
     if label_type == 'slice':
         with open(output_file, 'a', encoding='utf-8') as f:
-            for i in tqdm.tqdm(range(0, len(unlabeled_datas), request_batch_size)):
+            for i in tqdm.tqdm(range(config["start_index"], len(unlabeled_datas), request_batch_size)):
                 batch_prompts = prompts[i:i + request_batch_size]
                 responses = api_generation(batch_prompts)
                 for j in range(len(batch_prompts)):
@@ -135,7 +136,7 @@ if __name__ == '__main__':
                     f.write(json.dumps(record, ensure_ascii=False) + '\n')
     else:
         with open(output_file, 'a', encoding='utf-8') as f:
-            for i in tqdm.tqdm(range(0, len(unlabeled_datas), request_batch_size)):
+            for i in tqdm.tqdm(range(config["start_index"], len(unlabeled_datas), request_batch_size)):
                 batch_prompts = prompts[i:i + request_batch_size]
                 responses = api_generation(batch_prompts)
                 for j in range(len(batch_prompts)):
