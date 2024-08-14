@@ -120,17 +120,19 @@ if __name__ == '__main__':
         print(f"输出文件'{output_file}'不存在")
         exit(1)
 
-    with open(output_file, 'a', encoding='utf-8') as f:
-        # 获取上次断点位置
+    # 先读取文件内容，获取上次写入的位置
+    with open(output_file, 'r', encoding='utf-8') as f:
         lines = f.readlines()
-        # 如果文件内容为空
-        if not lines:
-            start_index = 0
-        else:
-            start_index = json.loads(lines[-1])["id"] + 1
-            if start_index >= len(unlabeled_datas):
-                print('所有数据已经标记完毕')
-                exit(1)
+
+    if not lines:
+        start_index = 0
+    else:
+        start_index = json.loads(lines[-1])["id"] + 1
+        if start_index >= len(unlabeled_datas):
+            print('所有数据已经标记完毕')
+            exit(1)
+
+    with open(output_file, 'a', encoding='utf-8') as f:
         if label_type == 'slice':
             for i in tqdm.tqdm(range(start_index, len(unlabeled_datas), request_batch_size)):
                 batch_prompts = prompts[i:i + request_batch_size]
