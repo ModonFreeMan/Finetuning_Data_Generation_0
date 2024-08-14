@@ -15,12 +15,12 @@ def load_unlabeled_data(jsonl_file):
     if not os.path.exists(jsonl_file):
         raise FileNotFoundError(f"无法找到待标记数据文件'{jsonl_file}'")
     with open(jsonl_file, 'r', encoding='utf-8') as f_:
-        lines = f_.readlines()
+        lines_ = f_.readlines()
         # 如果文件内容为空,抛出异常
-        if not lines:
+        if not lines_:
             raise FileNotFoundError(f"JSONL文件'{jsonl_file}'内容为空")
         else:
-            for line in lines:
+            for line in lines_:
                 record_ = json.loads(line)
                 # 将所有未标记的数据加入列表
                 results.append(record_)
@@ -44,7 +44,6 @@ def get_config():
             "request_batch_size": int(os.getenv('LABEL_BATCH_SIZE')),
             "label_pool": os.getenv('LABEL_POOL_PATH'),
             "label_type": os.getenv('LABEL_TYPE'),
-            "start_index": int(os.getenv('START_INDEX')),
         }
         if config_['label_type'] == '':
             raise ValueError('未指定待标记数据类型')
@@ -60,12 +59,12 @@ def load_label_pool(label_pool_file):
     if not os.path.exists(label_pool_file):
         raise FileNotFoundError(f"无法找到标记池文件'{label_pool_file}'")
     with open(label_pool_file, 'r', encoding='utf-8') as f_:
-        lines = f_.readlines()
+        lines_ = f_.readlines()
         # 如果文件内容为空,抛出异常
-        if not lines:
+        if not lines_:
             raise FileNotFoundError(f"标记池文件'{label_pool_file}'内容为空")
         else:
-            for line in lines:
+            for line in lines_:
                 record_ = json.loads(line)
                 labels_.append(record_['label'])
     return labels_
@@ -116,9 +115,24 @@ if __name__ == '__main__':
         prompts.append(prompt)
     # 使用正则表达式匹配内容，并将结果和数据源进行匹配
     pattern = r"'(.*?)'"
-    if label_type == 'slice':
-        with open(output_file, 'a', encoding='utf-8') as f:
-            for i in tqdm.tqdm(range(config["start_index"], len(unlabeled_datas), request_batch_size)):
+    # 检查输出文件
+    if not os.path.exists(output_file):
+        print(f"输出文件'{output_file}'不存在")
+        exit(1)
+
+    with open(output_file, 'a', encoding='utf-8') as f:
+        # 获取上次断点位置
+        lines = f.readlines()
+        # 如果文件内容为空
+        if not lines:
+            start_index = 0
+        else:
+            start_index = json.loads(lines[-1])["id"] + 1
+            if start_index >= len(unlabeled_datas):
+                print('所有数据已经标记完毕')
+                exit(1)
+        if label_type == 'slice':
+            for i in tqdm.tqdm(range(start_index, len(unlabeled_datas), request_batch_size)):
                 batch_prompts = prompts[i:i + request_batch_size]
                 responses = api_generation(batch_prompts)
                 for j in range(len(batch_prompts)):
@@ -134,9 +148,8 @@ if __name__ == '__main__':
                         "labels": result
                     }
                     f.write(json.dumps(record, ensure_ascii=False) + '\n')
-    else:
-        with open(output_file, 'a', encoding='utf-8') as f:
-            for i in tqdm.tqdm(range(config["start_index"], len(unlabeled_datas), request_batch_size)):
+        else:
+            for i in tqdm.tqdm(range(start_index, len(unlabeled_datas), request_batch_size)):
                 batch_prompts = prompts[i:i + request_batch_size]
                 responses = api_generation(batch_prompts)
                 for j in range(len(batch_prompts)):
