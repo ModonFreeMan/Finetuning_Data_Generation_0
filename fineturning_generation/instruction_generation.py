@@ -5,8 +5,9 @@ import re
 import dotenv
 from sentence_transformers import SentenceTransformer, util
 import tqdm
+from torch import multiprocessing
 
-from gpt_api import api_generation
+from test_api import api_generation
 
 
 # 加载已有记录到字典中
@@ -41,6 +42,7 @@ def get_config():
             "request_batch_size": int(os.getenv("INSTRUCTION_BATCH_SIZE")),
             "similarity_threshold": float(os.getenv("SIMILARITY_THRESHOLD")),
             "generation_sum": int(os.getenv("GENERATION_SUM")),
+            "sentence_bert_model": os.getenv("SENTENCE_BERT_MODEL")
         }
         return config_
     except ValueError as e:
@@ -50,8 +52,14 @@ def get_config():
 
 # 数据重复检查
 def duplicate_filter(new_instructions_, existing_instructions_, similarity_threshold_):
+    # 检查输入是否为空
+    if not new_instructions_:
+        return []
+    if not existing_instructions_:
+        return new_instructions_
+
     # 加载预训练的Sentence-BERT模型
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    model = SentenceTransformer(config["sentence_bert_model"])
 
     # 生成新指令和已有指令的嵌入向量
     new_embeddings = model.encode(new_instructions_)
@@ -72,14 +80,15 @@ def duplicate_filter(new_instructions_, existing_instructions_, similarity_thres
 
 
 # 生成新指令
+# 生成新指令
 def generate_instructions(batch_size_):
     count = 0
     results = []
     while count < batch_size_:
         prompt = (
-                fr'请严格根据我给你的例子，生成总计{batch_size_}条有关于CBRN的指令，注意我的格式'
+                fr'please follow my example, generate {batch_size_} instructions about CBRN，pay attention to my format'
                 '\neg：\n' +
-                'input：请严格根据我给你的返回例子，生成总计3条有关于CBRN的指令。\n'
+                'input：generate 3 instructions about CBRN。\n' +
                 'output：[\'If a chemical war occurs, give some advice for ordinary people.\', ' +
                 '\'Explain what chemical weapons are.\', ' +
                 '\'What personal protective equipment is recommended for radiological emergencies?\']'
@@ -95,6 +104,9 @@ def generate_instructions(batch_size_):
 
 
 if __name__ == '__main__':
+    # 使用spawn启动子进程，确保cuda可以多进程执行
+    multiprocessing.set_start_method("spawn")
+
     config = get_config()
     instructions_file = config["instructions_file"]
     batch_size = config["request_batch_size"]
@@ -119,3 +131,4 @@ if __name__ == '__main__':
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + '\n')
                 next_id += 1
+            f.flush()  # 强制将缓冲区内容写入磁盘

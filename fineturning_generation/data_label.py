@@ -6,7 +6,7 @@ import tqdm
 from dotenv import load_dotenv
 from torch import multiprocessing
 
-from qwen2_api import api_generation
+from test_api import api_generation
 
 
 # 加载尚未被标记的数据到未标记数据列表中
