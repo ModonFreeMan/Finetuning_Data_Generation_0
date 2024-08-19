@@ -1,13 +1,13 @@
 import json
 import os
-import re
+import random
 
 import dotenv
 from sentence_transformers import SentenceTransformer, util
 import tqdm
 from torch import multiprocessing
 
-from test_api import api_generation
+from qwen2_api import api_generation
 
 
 # 加载已有记录到字典中
@@ -52,13 +52,15 @@ def get_config():
 
 # 数据重复检查
 def duplicate_filter(new_instructions_, existing_instructions_, similarity_threshold_):
-    # 检查输入是否为空
+    # 检查新生成的向量是否为空
     if not new_instructions_:
         return []
+    # 检查已有的向量是否为空
     if not existing_instructions_:
         return new_instructions_
 
     # 加载预训练的Sentence-BERT模型
+    print("加载Sentence-BERT模型...\n")
     model = SentenceTransformer(config["sentence_bert_model"])
 
     # 生成新指令和已有指令的嵌入向量
@@ -66,7 +68,7 @@ def duplicate_filter(new_instructions_, existing_instructions_, similarity_thres
     existing_embeddings = model.encode(existing_instructions_)
 
     filtered_instructions = []
-
+    print(f"过滤前指令数量：{len(new_instructions_)}")
     for i_, new_emb in enumerate(new_embeddings):
         max_similarity = 0
         for existing_emb in existing_embeddings:
@@ -76,30 +78,31 @@ def duplicate_filter(new_instructions_, existing_instructions_, similarity_thres
         # 过滤掉相似度超过阈值的指令
         if max_similarity < similarity_threshold_:
             filtered_instructions.append(new_instructions_[i_])
+    print(f"过滤后指令数量：{len(filtered_instructions)}\n")
     return filtered_instructions
 
 
 # 生成新指令
-# 生成新指令
-def generate_instructions(batch_size_):
-    count = 0
+def generate_instructions(batch_size_, existing_instructions_):
     results = []
-    while count < batch_size_:
+    prompts = []
+    # 如果已有指令列表为空，使用默认的指令
+    for _ in range(batch_size_):
+        if len(existing_instructions_) == 0:
+            random_instruction = "What can ordinary people do to protect themselves from chemical threats?"
+        else:
+            # 从已有指令列表中随机选择一条指令构建指令集合
+            random_instruction = random.choice(existing_instructions_)
         prompt = (
-                fr'please follow my example, generate {batch_size_} instructions about CBRN，pay attention to my format'
-                '\neg：\n' +
-                'input：generate 3 instructions about CBRN。\n' +
-                'output：[\'If a chemical war occurs, give some advice for ordinary people.\', ' +
-                '\'Explain what chemical weapons are.\', ' +
-                '\'What personal protective equipment is recommended for radiological emergencies?\']'
+                fr'Please follow my example, generate one instruction about Chemical or Biological or' +
+                'Radiological or Nuclear, just question, do not contain answer' +
+                '\neg:\n' +
+                fr'{random_instruction}'
         )
-        response = api_generation([prompt])[0]
-        # 使用正则表达式匹配内容，并将结果和数据源进行匹配
-        pattern = r"'(.*?)'"
-        results = re.findall(pattern, response['response'])
-        # 过滤重复指令
-        filtered_results = duplicate_filter(results, existing_instructions, similarity_threshold)
-        count += len(filtered_results)
+        prompts.append(prompt)
+    responses = api_generation(prompts)
+    for response in responses:
+        results.append(response['response'])
     return results
 
 
@@ -113,15 +116,22 @@ if __name__ == '__main__':
     similarity_threshold = config["similarity_threshold"]
     generation_sum = config["generation_sum"]
 
-    # 加载已有指令
-    existing_records = load_record(instructions_file)
-    existing_instructions = [record['instruction'] for record in existing_records]
-    next_id = len(existing_instructions) + 1
     # 生成新指令
     with open(instructions_file, 'a', encoding='utf-8') as f:
         for i in tqdm.tqdm(range(0, generation_sum, batch_size)):
+            # 加载已有指令嵌入向量
+            existing_records = load_record(instructions_file)
+            next_id = len(existing_records) + 1
+            existing_instructions = [record['instruction'] for record in existing_records]
+
+            # 生成新指令
             current_batch_size = min(batch_size, generation_sum - i)
-            new_instructions = generate_instructions(current_batch_size)
+            new_instructions = generate_instructions(current_batch_size, existing_instructions)
+
+            # 去重
+            new_instructions = duplicate_filter(new_instructions, existing_instructions, similarity_threshold)
+
+            # 写入文件
             for instruction in new_instructions:
                 record = {
                     "id": next_id,
@@ -129,6 +139,8 @@ if __name__ == '__main__':
                     "isLabeled": False,
                     "labels": []
                 }
-                f.write(json.dumps(record, ensure_ascii=False) + '\n')
                 next_id += 1
-            f.flush()  # 强制将缓冲区内容写入磁盘
+                f.write(json.dumps(record, ensure_ascii=False) + '\n')
+            print(f"已生成{next_id}条指令\n")
+            # 强制将缓冲区内容写入磁盘
+            f.flush()

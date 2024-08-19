@@ -17,7 +17,6 @@ def make_request(config_, prompt_, device):
     generated_ids = [output_ids[len(input_ids):] for input_ids, output_ids in
                      zip(model_inputs.input_ids, generated_ids)]
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-
     data_ = {"prompt": prompt_, "response": response, "created_at": str(datetime.now())}
     return data_
 

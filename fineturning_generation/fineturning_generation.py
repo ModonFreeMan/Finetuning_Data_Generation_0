@@ -5,7 +5,9 @@ import dotenv
 import tqdm
 import json
 
-from gpt_api import api_generation
+from torch import multiprocessing
+
+from qwen2_api import api_generation
 
 
 # 加载环境变量
@@ -24,10 +26,8 @@ def get_config():
         # INSTRUCTION_DATA_FILE=../data_pool/test_pool/instruction_data_labeled.jsonl
         config_ = {
             "output_file": os.getenv("FINE_TUNE_DATA_OUTPUT_FILE"),
-            "label_data_file": os.getenv("LABEL_DATA_FILE"),
-            "reference_data_file": os.getenv("REFERENCE_DATA_FILE"),
-            "instruction_data_file": os.getenv("INSTRUCTION_DATA_FILE"),
-            "request_batch_size": int(os.getenv("FINE_TUNE_DATA_BATCH_SIZE"))
+            "request_batch_size": int(os.getenv("FINE_TUNE_DATA_BATCH_SIZE")),
+            "combination_file": os.getenv("FINE_SOURCE_DATA_FILE")
         }
         return config_
     except ValueError as e:
@@ -35,76 +35,52 @@ def get_config():
         exit(1)
 
 
-# 组装提示词
-def get_prompts(labels_, reference_data_, instruction_data_):
-    prompts_ = []
-    for label in labels_:
-        matching_instructions = [inst for inst in instruction_data_ if label in inst['labels']]
-        matching_references = [ref for ref in reference_data_ if label in ref['labels']]
-        if not matching_instructions:
-            continue
-        for inst in matching_instructions:
-            if not matching_references:
-                continue
-            for ref in matching_references:
-                prompt = (
-                        f"请根据我给出的题目:\"{inst['instruction']}\"以及可供参考的数据:\"{ref['slice']}\"，" +
-                        "生成微调数据，微调数据必须包含input以及output\n" +
-                        "example：\n" +
-                        "input: Explain what chemical weapons are.\n" +
-                        "output: " +
-                        "Chemical weapons are toxic chemicals designed to harm or kill humans, animals, " +
-                        "or plants as an act of warfare. These weapons exploit the toxic properties of " +
-                        "chemical substances rather than their explosive properties to achieve their objectives."
-                )
-                prompts_.append(prompt)
+# 从文件中加载对应的组合数据
+def get_combinations(combination_file_, start_index_):
+    with open(combination_file_, 'r', encoding='utf-8') as temp_f:
+        combinations_ = []
+        for line_ in temp_f:
+            combination = json.loads(line_)
+            if int(combination["id"]) >= start_index_:
+                combinations_.append(combination)
 
-    return prompts_
+    return combinations_
 
 
 if __name__ == "__main__":
+    # 使用spawn启动子进程，确保cuda可以多进程执行
+    multiprocessing.set_start_method("spawn")
+
     # 获取配置
     config = get_config()
     request_batch_size = config["request_batch_size"]
+    combination_file = config["combination_file"]
+    output_file = config["output_file"]
 
-    # 根据label池生成分组instruction和reference数据
-    # 读取label池数据
-    label_data = []
-    with open(config["label_data_file"], "r", encoding='utf-8') as f:
-        for line in f:
-            label_data.append(json.loads(line))
-    # 读取reference
-    reference_data = []
-    with open(config["reference_data_file"], "r", encoding='utf-8') as f:
-        for line in f:
-            reference_data.append(json.loads(line))
-    # 读取instruction
-    instruction_data = []
-    with open(config["instruction_data_file"], "r") as f:
-        for line in f:
-            instruction_data.append(json.loads(line))
-    # 获取prompts
-    labels = [label['label'] for label in label_data]
-    prompts = get_prompts(labels, reference_data, instruction_data)
-    # 调用api生成
-    with open(config["output_file"], "w") as f:
-        for i in tqdm.tqdm(range(0, len(prompts), request_batch_size)):
-            batch_prompts = prompts[i:i + request_batch_size]
+    # 确定开始位置
+    with open(output_file, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    if not lines:
+        start_index = 0
+    else:
+        start_index = json.loads(lines[-1])["id"] + 1
+
+    # 调用api生成数据
+    combinations = get_combinations(combination_file, start_index)
+    with open(output_file, 'a', encoding='utf-8') as f:
+        for i in tqdm.tqdm(range(start_index, len(combinations), request_batch_size)):
+            batch_prompts = [combination["prompt"] for combination in combinations[i:i + request_batch_size]]
             results = api_generation(batch_prompts)
             for j in range(len(batch_prompts)):
                 result = results[j]
                 response = result.get("response")
-                index = i + j
-                # 处理response字段，将其转换为包含input和output的字典
-                output_lines = response.split("\n")
-                input_value = output_lines[0].replace("input: ", "")
-                output_value = output_lines[1].replace("output: ", "")
-                if output_value == "" or input_value == "":
-                    index -= 1
-                    continue
+                index = int(combinations[i + j]["id"])
                 record = {
                     "id": index,
-                    "input": input_value,
-                    "output": output_value
+                    "reference_slice": combinations[index]["reference_slice"],
+                    "input": combinations[index]["instruction"],
+                    "output": response,
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + '\n')
+            f.flush()
+            print(f"已写入{index}条数据\n")

@@ -6,7 +6,7 @@ import tqdm
 from dotenv import load_dotenv
 from torch import multiprocessing
 
-from test_api import api_generation
+from qwen2_api import api_generation
 
 
 # 加载尚未被标记的数据到未标记数据列表中
@@ -98,19 +98,20 @@ if __name__ == '__main__':
         print(e)
         exit(1)
 
-    # 进行提示词组装
+    # Constructing prompts
     prompts = []
     for i in range(0, len(unlabeled_datas)):
         data = unlabeled_datas[i][label_type]
         prompt = (
-                fr'请根据我给你的标记词库：{labels}，只允许从中挑选标记词（可以有多个，必须至少选择一个），'
-                fr'对以下数据进行标记：[{data}]' +
-                '\neg：\n' +
-                'input：如果发生沙林武器袭击，首先要保持冷静并尽快躲避到安全地带，远离袭击现场。'
-                '如果可能的话，应该尽快脱离受害区域，并通知当地应急部门。同时，要尽量避免呼吸袭击现场的空气，用湿布或口罩遮住口鼻以减少吸入有毒气体的风险。'
-                '在逃离现场的过程中，要密切关注当地媒体和官方通告，以获取最新的安全信息和指示。在遇到救援人员时，要听从他们的指挥和安排，协助他们进行救援工作。'
-                '最重要的是，保持冷静和理智，不要恐慌和乱行动，以确保自己和他人的安全。\n' +
-                'output：[\'Emergency Response\', \'Chemical Weapons\']'
+                fr'Please, based on the label set I provide: {labels}, only select labels from this set (multiple selections are allowed, but you must choose at least one), '
+                fr'label the following data: [{data}]' +
+                '\neg:\n' +
+                'input: In the event of a sarin gas attack, the first thing to do is to remain calm and quickly seek shelter in a safe area away from the attack site. '
+                'If possible, try to leave the affected area and notify local emergency services. Also, try to avoid breathing air from the attack site, covering your nose and mouth with a wet cloth or mask to reduce the risk of inhaling toxic gases. '
+                'While escaping the site, pay close attention to local media and official announcements for the latest safety information and instructions. '
+                'When encountering rescue personnel, follow their commands and cooperate with their rescue efforts. '
+                'The most important thing is to remain calm and rational, avoiding panic and rash actions to ensure your safety and the safety of others.\n' +
+                'output: [\'Emergency Response\', \'Chemical Weapons\']'
         )
         prompts.append(prompt)
     # 使用正则表达式匹配内容，并将结果和数据源进行匹配
@@ -132,6 +133,23 @@ if __name__ == '__main__':
             print('所有数据已经标记完毕')
             exit(1)
 
+        # 检查输出文件
+        if not os.path.exists(output_file):
+            print(f"输出文件'{output_file}'不存在")
+            exit(1)
+
+        # 先读取文件内容，获取上次写入的位置
+        with open(output_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        if not lines:
+            start_index = 0
+        else:
+            start_index = json.loads(lines[-1])["id"] + 1
+            if start_index >= len(unlabeled_datas):
+                print('所有数据已经标记完毕')
+                exit(1)
+
     with open(output_file, 'a', encoding='utf-8') as f:
         if label_type == 'slice':
             for i in tqdm.tqdm(range(start_index, len(unlabeled_datas), request_batch_size)):
@@ -150,6 +168,7 @@ if __name__ == '__main__':
                         "labels": result
                     }
                     f.write(json.dumps(record, ensure_ascii=False) + '\n')
+                f.flush()
         else:
             for i in tqdm.tqdm(range(start_index, len(unlabeled_datas), request_batch_size)):
                 batch_prompts = prompts[i:i + request_batch_size]
@@ -165,3 +184,5 @@ if __name__ == '__main__':
                         "labels": result
                     }
                     f.write(json.dumps(record, ensure_ascii=False) + '\n')
+                f.flush()
+                print(f"已标记{index+1}条数据\n")
