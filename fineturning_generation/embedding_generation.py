@@ -122,5 +122,5 @@ if __name__ == '__main__':
         create_index(collection)
     finally:
         # 关闭连接
-        connections.disconnect()
+        connections.disconnect(alias=collection_name)
         print("连接已关闭\n")

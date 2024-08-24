@@ -57,10 +57,19 @@ if __name__ == "__main__":
     output_file = config["output_file"]
     generation_size = config["generation_size"]
 
+    # 先读取文件内容，获取上次写入的位置
+    with open(output_file, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    if not lines:
+        start_index = 0
+    else:
+        start_index = json.loads(lines[-1])["id"] + 1
+
     # 调用api生成数据
     combinations = get_combinations(combination_file, generation_size)
     with open(output_file, 'a', encoding='utf-8') as f:
-        for i in tqdm.tqdm(range(0, len(combinations), request_batch_size)):
+        for i in tqdm.tqdm(range(start_index, len(combinations), request_batch_size)):
             batch_prompts = [combination["prompt"] for combination in combinations[i:i + request_batch_size]]
             results = api_generation(batch_prompts)
             for j in range(len(batch_prompts)):
@@ -69,7 +78,7 @@ if __name__ == "__main__":
                 index = i + j
                 record = {
                     "id": i + j,
-                    "reference_slice": combinations[index]["reference_slice"],
+                    "reference_slice": combinations[index]["slice"],
                     "input": combinations[index]["instruction"],
                     "output": response,
                 }
