@@ -1,5 +1,5 @@
 import os
-import dotenv
+from dotenv import load_dotenv
 from torch import multiprocessing
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datetime import datetime
@@ -30,13 +30,25 @@ def worker(config, prompts, device):
 
 
 def get_config():
-    dotenv.load_dotenv()
-    return {
-        "model_path": os.getenv("MODEL_PATH"),
-        "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS")),
-        "device": os.getenv("DEVICE"),
-        "max_workers": int(os.getenv("MAX_WORKERS")),
-    }
+    """
+    Gets configuration from environment variables.
+
+    Returns:
+    - A dictionary with configuration parameters.
+    """
+    # 读取环境变量
+    try:
+        load_dotenv()
+        config_ = {
+            "model_path": os.getenv("MODEL_PATH"),
+            "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS")),
+            "device": os.getenv("DEVICE"),
+            "max_workers": int(os.getenv("MAX_WORKERS")),
+        }
+        return config_
+    except ValueError as e_:
+        print(f'环境变量配置错误: {e_}')
+        exit(1)
 
 
 def api_generation(prompts):
