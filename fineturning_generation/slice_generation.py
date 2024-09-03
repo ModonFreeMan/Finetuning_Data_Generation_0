@@ -2,6 +2,7 @@ import glob
 import json
 import os
 
+import dotenv
 from docx import Document
 from dotenv import load_dotenv
 
@@ -101,17 +102,34 @@ def process_docx_file(file_path_, slice_length_, slice_offset_, output_file_, id
     return id_start_ + len(sliced_texts)  # 返回下一个可用的id
 
 
+def get_config():
+    """
+    Gets configuration from environment variables.
+
+    Returns:
+    - A dictionary with configuration parameters.
+    """
+    try:
+        dotenv.load_dotenv()
+        config_ = {
+            "input_file_folder": os.getenv("SLICE_GENERATION_INPUT_FOLDER"),
+            "output_file": os.getenv("SLICE_GENERATION_OUTPUT_FILE"),
+            "slice_length": int(os.getenv("SLICE_GENERATION_LENGTH")),
+            "slice_offset_unit": int(os.getenv("SLICE_GENERATION_OFFSET_UNIT")),
+        }
+        return config_
+    except ValueError as e_:
+        print(f"环境变量配置错误: {e_}")
+        exit(1)
+
+
 if __name__ == '__main__':
     # 读取环境变量
-    try:
-        load_dotenv()
-        slice_length = int(os.getenv('SLICE_LENGTH'))  # 切片大小
-        slice_offset_unit = int(os.getenv('SLICE_OFFSET_UNIT'))  # 切片间隔
-        input_file_folder = os.getenv('REFERENCE_DATA_POOL_PATH')  # 参考文件路径
-        output_file = os.getenv('DATA_SLICE_POOL_PATH')  # 切片文件路径
-    except ValueError as e:
-        print(f'环境变量配置错误: {e}')
-        exit(1)
+    config = get_config()
+    input_file_folder = config.get('input_file_folder')  # 参考文件路径
+    output_file = config.get('output_file')  # 切片文件路径
+    slice_length = config.get('slice_length')  # 切片大小
+    slice_offset_unit = config.get('slice_offset_unit')  # 切片间隔
 
     # 加载已处理的文件偏移记录和最高id
     try:

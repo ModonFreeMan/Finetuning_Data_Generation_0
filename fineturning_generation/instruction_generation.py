@@ -41,7 +41,7 @@ def get_config():
             "instructions_file": os.getenv("INSTRUCTIONS_FILE"),
             "request_batch_size": int(os.getenv("INSTRUCTION_BATCH_SIZE")),
             "similarity_threshold": float(os.getenv("SIMILARITY_THRESHOLD")),
-            "generation_sum": int(os.getenv("GENERATION_SUM")),
+            "generation_sum": int(os.getenv("INSTRUCTION_GENERATION_SUM")),
             "sentence_bert_model": os.getenv("SENTENCE_BERT_MODEL")
         }
         return config_

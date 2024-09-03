@@ -5,11 +5,18 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from datetime import datetime
 
 
-def make_request(config_, prompt_, device):
+def make_request(config_, request, device):
     model = AutoModelForCausalLM.from_pretrained(config_['model_path'], torch_dtype="auto").to(device)
     tokenizer = AutoTokenizer.from_pretrained(config_['model_path'])
+    instruction_ = request.get('instruction')
+    contexts_ = request.get('contexts')
+    messages = []
+    for context_ in contexts_:
+        message = {"role": "system", "content": context_}
+        messages.append(message)
+    message = {"role": "user", "content": instruction_}
+    messages.append(message)
 
-    messages = [{"role": "user", "content": prompt_}]
     text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     model_inputs = tokenizer([text], return_tensors="pt").to(device)
 
@@ -17,7 +24,7 @@ def make_request(config_, prompt_, device):
     generated_ids = [output_ids[len(input_ids):] for input_ids, output_ids in
                      zip(model_inputs.input_ids, generated_ids)]
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-    data_ = {"prompt": prompt_, "response": response, "created_at": str(datetime.now())}
+    data_ = {"prompt": instruction_, "response": response, "created_at": str(datetime.now())}
     return data_
 
 
@@ -51,14 +58,14 @@ def get_config():
         exit(1)
 
 
-def api_generation(prompts):
+def api_generation(requests):
     config = get_config()
     device = config.get('device')
     num_processes = config.get('max_workers')  # 进程数
 
-    chunked_prompts = [prompts[i::num_processes] for i in range(num_processes)]
+    chunked_requests = [requests[i::num_processes] for i in range(num_processes)]
 
     with multiprocessing.Pool(processes=num_processes) as pool:
-        results = pool.starmap(worker, [(config, chunk, device) for chunk in chunked_prompts])
+        results = pool.starmap(worker, [(config, request, device) for request in chunked_requests])
 
     return [item for sublist in results for item in sublist]
